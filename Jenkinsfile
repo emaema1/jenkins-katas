@@ -32,7 +32,7 @@ pipeline {
           steps {
             unstash 'code'
             sh 'ci/build-app.sh'
-            stash 'code'
+            stash excludes: '.git', name: 'code'
             archiveArtifacts 'app/build/libs/'
           }
         }
@@ -55,17 +55,33 @@ pipeline {
       }
     }
     stage('push docker app') {
+      when { 
+        beforeAgent true
+        branch 'master'
+        }
       environment {
-            DOCKERCREDS = credentials('docker_login') //use the credentials just created in this stage
+        DOCKERCREDS = credentials('docker_login') //use the credentials just created in this stage
+        }
+      steps {
+        unstash 'code' //unstash the repository code
+        sh 'ci/build-docker.sh'
+        sh 'echo "$DOCKERCREDS_PSW" | docker login -u "$DOCKERCREDS_USR" --password-stdin' //login to docker hub with the credentials above
+        sh 'ci/push-docker.sh'
+        }
+      }
+    stage('component test') {
+      when {
+        beforeAgent true
+        not {
+          branch 'dev*'
           }
-          steps {
-            unstash 'code' //unstash the repository code
-            sh 'ci/build-docker.sh'
-            sh 'echo "$DOCKERCREDS_PSW" | docker login -u "$DOCKERCREDS_USR" --password-stdin' //login to docker hub with the credentials above
-            sh 'ci/push-docker.sh'
-          }
+        }
+      steps {
+        sh 'ci/component-test.sh'
       }
     }
+  }
+
 
   post {
     cleanup {
